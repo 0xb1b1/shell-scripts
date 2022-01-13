@@ -233,7 +233,7 @@ mkdir -p "${working_dir}/${checksum_dir}"
 # cd into the working_dir
 cd "$working_dir"
 
-# iterate though all files in the working_dir
+# iterate through all files in the working_dir
 for hashdeep_path in *
 do
 	## skip checksum calculation for the checksum folder ##
