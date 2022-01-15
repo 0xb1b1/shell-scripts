@@ -13,6 +13,8 @@ checksum_algo="md5"	# md5 sha1 sha256
 checksum_dir="${checksum_algo}sums"
 checksum_file_ext="${checksum_algo}deep"
 show_current_file="false" # set to true if you need to monitor checksum calculation for large files
+debug_mode="true"
+extensive_debug="true"
 ## variables shown above are subject to change depending on your setup ##
 
 ### persistent variables ###
@@ -56,6 +58,9 @@ create_command_base() {
 apply_filenames_by_algo() {
 	checksum_dir="${checksum_algo}sums"
 	checksum_file_ext="${checksum_algo}deep"
+}
+debug_announce() {
+	echo -n "DEBUG: "
 }
 ### functions ###
 
@@ -236,22 +241,48 @@ cd "$working_dir"
 # iterate through all files in the working_dir
 for hashdeep_path in *
 do
-	## skip checksum calculation for the checksum folder ##
-	if [ $hashdeep_path == $checksum_dir ] || [ $hashdeep_path == $self_filename ]
+	## DEBUG ##
+	if [ $debug_mode == "true" ]
 	then
-		continue
+		echo $hashdeep_path
+	fi
+
+	if [ $extensive_debug == "true" ]
+	then
+		echo "hashdeep full command: ${command_base} ${command_flags} ${working_dir}/\"${hashdeep_path}\" > ${working_dir}/\"${checksum_dir}\"/\"${hashdeep_path}\".\"${checksum_file_ext}\""
+	fi
+	## DEBUG ##
+
+	## skip checksum calculation for the checksum directory ##
+	if [ $hashdeep_path == "${checksum_dir}" ] || [ $hashdeep_path == "${self_filename}" ]
+	then
+		## DEBUG ##
+		if [ $debug_mode == "true" ]
+		then
+			debug_announce
+			echo "SKIPPED CHECKSUM"
+			echo "REASON: CHECKSUM DIRECTORY"
+			continue
+		fi
+		## DEBUG ##
 	fi
 	## skip checksum calculation for the checksum folder ##
 
 	## skip checksum calculation for files in parser_stoplist ##
-	if $(echo $parser_stoplist | grep -w $parser_stoplist > /dev/null)
+	if $(echo $hashdeep_path | grep -w $parser_stoplist > /dev/null)
 	then
+		## DEBUG ##
+		if [ $debug_mode == "true" ]
+		then
+			debug_announce
+			echo "SKIPPED CHECKSUM"
+			echo "REASON: FILE IN parser_stoplist"
+		fi
+		## DEBUG ##
 		continue
 	fi
-	## skip checksum calculation for files in parser_stoplist ##
 
-	# debug: check if the file/dir parsing script has errors
-	#echo "$hashdeep_path"
+	## skip checksum calculation for files in parser_stoplist ##
 
 	## tell the user which file/directory is being traversed ##
 	# newline formatting
@@ -265,7 +296,20 @@ do
 
 	## perform recursive checksum calculation for $hashdeep_path ##
 	# construct the command and run it using eval; save to respective files in the checksum_dir and override any previous results
-	eval "${command_base} ${command_flags} \"${hashdeep_path}\" > \"${working_dir}/${checksum_dir}\"/\"${hashdeep_path}\".\"${checksum_file_ext}\""
-	## perform recursive checksum calculation for $hashdeep_path ##
+	hashdeep_eval_command="${command_base} ${command_flags} ${working_dir}/\"${hashdeep_path}\" > ${working_dir}/\"${checksum_dir}\"/\"${hashdeep_path}\".\"${checksum_file_ext}\""
+	eval "${hashdeep_eval_command}"
+	## DEBUG ##
+	if [ $debug_mode == "true" ]
+	then
+		debug_announce
+		echo $hashdeep_eval_command
+	fi
+	if [ $debug_mode == "true" ]
+	then
+		echo "FINISHED FOR $hashdeep_path"
+		echo "----------------------------------------"
+	fi
+	## DEBUG ##
+## perform recursive checksum calculation for $hashdeep_path ##
 done
 ### create checksums ###
