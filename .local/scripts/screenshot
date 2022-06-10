@@ -1,0 +1,3 @@
+#!/bin/sh
+
+scrot $HOME/Pictures/Screenshots/Screenshot_%Y-%m-%d_%H-%M-%S.png	# -%P

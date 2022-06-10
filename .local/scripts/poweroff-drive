@@ -1,0 +1,4 @@
+doas umount /mnt/dm-drive0
+doas cryptsetup close dm-drive0
+doas udisksctl power-off -b /dev/disk/by-uuid/UUID
+
