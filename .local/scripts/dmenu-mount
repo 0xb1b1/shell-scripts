@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
 # dmenu prompt for mounting unmounted drives
 # mounts automatically if a given drive is found in /etc/fstab
@@ -12,4 +12,3 @@ mountable=$(lsblk -lp | grep "part $" | awk '{print $1, "(" $4 ")"}')
 chosen=$(echo "$mountable" | dmenu -i -p "Mount which drive?" | awk '{print $1}')
 [ "$chosen" = "" ] && exit 1
 sudo mount "$chosen" && exit 0
-

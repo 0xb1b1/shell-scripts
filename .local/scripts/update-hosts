@@ -1,7 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
 runtime_hosts_dl_dir=$XDG_RUNTIME_DIR/hosts-git
-mkdir -p $runtime_hosts_dl_dir
-wget https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/fakenews-gambling-porn-social/hosts -O $runtime_hosts_dl_dir/stevenblack-all-hosts
-cat /etc/hosts.bk | sudo tee /etc/hosts
-cat $runtime_hosts_dl_dir/stevenblack-all-hosts | sudo tee -a /etc/hosts
+
+mkdir -p "$runtime_hosts_dl_dir"
+wget https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/fakenews-gambling-porn-social/hosts -O "$runtime_hosts_dl_dir"/stevenblack-all-hosts
+# shellcheck disable=SC2002
+cat /etc/hosts.bk | sudo tee /etc/hosts  # How to fix SC2002 in this case?
+# shellcheck disable=SC2002
+cat "$runtime_hosts_dl_dir"/stevenblack-all-hosts | sudo tee -a /etc/hosts

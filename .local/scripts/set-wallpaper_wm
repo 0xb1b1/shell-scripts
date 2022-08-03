@@ -1,4 +1,3 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
-feh --bg-fill $HOME/.local/share/backgrounds/vertical_neon_lights-dark.jpg
-
+feh --bg-fill "$HOME"/.local/share/backgrounds/vertical_neon_lights-dark.jpg
