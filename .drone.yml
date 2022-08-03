@@ -5,4 +5,8 @@ name: default
 
 steps:
   - name: lint
-    image: osshelp/drone-linter
+    image: 0xb1b1/drone-linter
+    settings:
+      sh_files:
+        - .local/scripts/*
+        - data_integrity/*
