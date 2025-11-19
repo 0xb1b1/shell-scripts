@@ -233,33 +233,39 @@ run_with_retry() {
 }
 
 # Ensure helper image with xz is present on source side (local or remote)
+# Ensure helper image with xz is present on source side (local or remote)
 ensure_helper_image_src() {
   local img="$HELPER_IMAGE"
+
   if $LOCAL_SRC; then
-    local docker_cmd="docker"
+    # LOCAL SOURCE: use an array so "sudo docker" works even with custom IFS
+    local docker_cmd=(docker)
     if $SRC_DOCKER_BECOME; then
-      docker_cmd="sudo docker"
+      docker_cmd=(sudo docker)
     fi
-    if ! $docker_cmd image inspect "$img" >/dev/null 2>&1; then
+
+    if ! "${docker_cmd[@]}" image inspect "$img" >/dev/null 2>&1; then
       echo ">>> Building helper image '$img' locally (source) ..."
       printf '%s\n' \
 'FROM ubuntu:25.04' \
 'RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils tar ca-certificates && rm -rf /var/lib/apt/lists/*' \
 'WORKDIR /work' \
-        | $docker_cmd build -t "$img" -
+        | "${docker_cmd[@]}" build -t "$img" -
     fi
   else
-    local docker_cmd="docker"
+    # REMOTE SOURCE: build snippet string for ssh, keep as simple text
+    local docker_cmd_str="docker"
     if $SRC_DOCKER_BECOME; then
-      docker_cmd="sudo docker"
+      docker_cmd_str="sudo docker"
     fi
-    ssh_src "if ! $docker_cmd image inspect '$img' >/dev/null 2>&1; then
+
+    ssh_src "if ! $docker_cmd_str image inspect '$img' >/dev/null 2>&1; then
   echo '>>> Building helper image $img on source host...' >&2
   printf '%s\n' \
 'FROM ubuntu:25.04' \
 'RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils tar ca-certificates && rm -rf /var/lib/apt/lists/*' \
 'WORKDIR /work' \
-    | $docker_cmd build -t '$img' -
+    | $docker_cmd_str build -t '$img' -
 fi"
   fi
 }
