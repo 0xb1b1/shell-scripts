@@ -71,6 +71,7 @@ LOCAL_SRC=false
 LOCAL_DST=false
 RETRY_ATTEMPTS=1
 IN_CLEANUP=false
+HELPER_IMAGE="migrate-docker-objects:latest"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -229,6 +230,55 @@ run_with_retry() {
     fi
     ((attempt++))
   done
+}
+
+# Ensure helper image with xz is present on source side (local or remote)
+ensure_helper_image_src() {
+  local img="$HELPER_IMAGE"
+  if $LOCAL_SRC; then
+    local docker_cmd="docker"
+    if $SRC_DOCKER_BECOME; then
+      docker_cmd="sudo docker"
+    fi
+    if ! $docker_cmd image inspect "$img" >/dev/null 2>&1; then
+      echo ">>> Building helper image '$img' locally (source) ..."
+      printf '%s\n' \
+'FROM ubuntu:25.04' \
+'RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils tar ca-certificates && rm -rf /var/lib/apt/lists/*' \
+'WORKDIR /work' \
+        | $docker_cmd build -t "$img" -
+    fi
+  else
+    local docker_cmd="docker"
+    if $SRC_DOCKER_BECOME; then
+      docker_cmd="sudo docker"
+    fi
+    ssh_src "if ! $docker_cmd image inspect '$img' >/dev/null 2>&1; then
+  echo '>>> Building helper image $img on source host...' >&2
+  printf '%s\n' \
+'FROM ubuntu:25.04' \
+'RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils tar ca-certificates && rm -rf /var/lib/apt/lists/*' \
+'WORKDIR /work' \
+    | $docker_cmd build -t '$img' -
+fi"
+  fi
+}
+
+# Ensure helper image with xz is present on destination host
+ensure_helper_image_dst() {
+  local img="$HELPER_IMAGE"
+  local docker_cmd="docker"
+  if $DST_DOCKER_BECOME; then
+    docker_cmd="sudo docker"
+  fi
+  ssh_dst "if ! $docker_cmd image inspect '$img' >/dev/null 2>&1; then
+  echo '>>> Building helper image $img on destination host...' >&2
+  printf '%s\n' \
+'FROM ubuntu:25.04' \
+'RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils tar ca-certificates && rm -rf /var/lib/apt/lists/*' \
+'WORKDIR /work' \
+    | $docker_cmd build -t '$img' -
+fi"
 }
 
 # SSH and rsync helpers (use ports, with retry)
@@ -443,29 +493,31 @@ transfer_volume() {
 
   echo ">>> Exporting Docker volume on source via tar (xz compressed) ..."
   if $LOCAL_SRC; then
+    ensure_helper_image_src
     if $SRC_DOCKER_BECOME; then
       sudo docker run --rm \
         -v "$OBJECT_NAME":/source:ro \
         -v "$SRC_TMP_PATH":/backup \
-        ubuntu tar cJvf "/backup/$(basename "$remote_src_file")" -C /source .
+        "$HELPER_IMAGE" tar cJvf "/backup/$(basename "$remote_src_file")" -C /source .
     else
       docker run --rm \
         -v "$OBJECT_NAME":/source:ro \
         -v "$SRC_TMP_PATH":/backup \
-        ubuntu tar cJvf "/backup/$(basename "$remote_src_file")" -C /source .
+        "$HELPER_IMAGE" tar cJvf "/backup/$(basename "$remote_src_file")" -C /source .
     fi
     sudo chmod 644 "$remote_src_file" 2>/dev/null || chmod 644 "$remote_src_file" 2>/dev/null || true
   else
+    ensure_helper_image_src
     if $SRC_DOCKER_BECOME; then
       ssh_src "sudo docker run --rm \
         -v '$OBJECT_NAME':/source:ro \
         -v '$SRC_TMP_PATH':/backup \
-        ubuntu tar cJvf '/backup/$(basename \"$remote_src_file\")' -C /source ."
+        '$HELPER_IMAGE' tar cJvf '/backup/$(basename \"$remote_src_file\")' -C /source ."
     else
       ssh_src "docker run --rm \
         -v '$OBJECT_NAME':/source:ro \
         -v '$SRC_TMP_PATH':/backup \
-        ubuntu tar cJvf '/backup/$(basename \"$remote_src_file\")' -C /source ."
+        '$HELPER_IMAGE' tar cJvf '/backup/$(basename \"$remote_src_file\")' -C /source ."
     fi
     ssh_src "sudo chmod 644 '$remote_src_file' 2>/dev/null || chmod 644 '$remote_src_file' 2>/dev/null || true"
   fi
@@ -556,16 +608,17 @@ transfer_volume() {
   fi
 
   echo ">>> Importing data into Docker volume on dest via tar xJvf ..."
+  ensure_helper_image_dst
   if $DST_DOCKER_BECOME; then
     ssh_dst "sudo docker run --rm \
       -v '$OBJECT_NAME':/dest \
       -v '$DST_TMP_PATH':/backup \
-      ubuntu bash -c 'cd /dest && tar xJvf /backup/$tar_filename'"
+      '$HELPER_IMAGE' bash -c 'cd /dest && tar xJvf /backup/$tar_filename'"
   else
     ssh_dst "docker run --rm \
       -v '$OBJECT_NAME':/dest \
       -v '$DST_TMP_PATH':/backup \
-      ubuntu bash -c 'cd /dest && tar xJvf /backup/$tar_filename'"
+      '$HELPER_IMAGE' bash -c 'cd /dest && tar xJvf /backup/$tar_filename'"
   fi
 
   echo ">>> Docker volume transfer completed successfully."
