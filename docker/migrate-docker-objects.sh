@@ -233,7 +233,6 @@ run_with_retry() {
 }
 
 # Ensure helper image with xz is present on source side (local or remote)
-# Ensure helper image with xz is present on source side (local or remote)
 ensure_helper_image_src() {
   local img="$HELPER_IMAGE"
 
@@ -287,6 +286,38 @@ ensure_helper_image_dst() {
 fi"
 }
 
+# Get image ID on source (local or remote)
+get_image_id_src() {
+  local img_name="$1"
+  local id=""
+  if $LOCAL_SRC; then
+    local docker_cmd=(docker)
+    if $SRC_DOCKER_BECOME; then
+      docker_cmd=(sudo docker)
+    fi
+    id="$("${docker_cmd[@]}" image ls --digests --format '{{.ID}}' "$img_name" 2>/dev/null | head -n1 || true)"
+  else
+    local docker_cmd_str="docker"
+    if $SRC_DOCKER_BECOME; then
+      docker_cmd_str="sudo docker"
+    fi
+    id="$(ssh_src "$docker_cmd_str image ls --digests --format '{{.ID}}' '$img_name' 2>/dev/null | head -n1")"
+  fi
+  echo "$id"
+}
+
+# Get image ID on destination (always remote for now)
+get_image_id_dst() {
+  local img_name="$1"
+  local docker_cmd_str="docker"
+  if $DST_DOCKER_BECOME; then
+    docker_cmd_str="sudo docker"
+  fi
+  local id=""
+  id="$(ssh_dst "$docker_cmd_str image ls --digests --format '{{.ID}}' '$img_name' 2>/dev/null | head -n1")"
+  echo "$id"
+}
+
 # SSH and rsync helpers (use ports, with retry)
 ssh_src() {
   run_with_retry ssh -p "$SRC_PORT" "$SRC" "$@"
@@ -338,6 +369,44 @@ echo
 transfer_image() {
   local remote_src_file remote_dst_file local_file
   local remote_src_chunks_dir local_chunks_dir remote_dst_chunks_dir
+
+  # --- NEW: compare image IDs first ---
+  echo ">>> Checking Docker image IDs on source and destination ..."
+  local src_id dst_id
+
+  src_id="$(get_image_id_src "$OBJECT_NAME")"
+  dst_id="$(get_image_id_dst "$OBJECT_NAME")"
+
+  if [[ -n "$src_id" ]]; then
+    echo "Source image ID      : $src_id"
+  else
+    echo "Source image ID      : <not found>"
+  fi
+
+  if [[ -n "$dst_id" ]]; then
+    echo "Destination image ID : $dst_id"
+  else
+    echo "Destination image ID : <not found>"
+  fi
+
+  # Validate ID formats; if unexpected – warn (yellow) and force transfer
+  local invalid_ids=false
+  if [[ -n "$src_id" && ! "$src_id" =~ ^[a-z0-9]+$ ]]; then
+    printf '\e[33mWARNING:\e[0m Unexpected source image ID format ("%s"), proceeding with transfer.\n' "$src_id" >&2
+    invalid_ids=true
+  fi
+  if [[ -n "$dst_id" && ! "$dst_id" =~ ^[a-z0-9]+$ ]]; then
+    printf '\e[33mWARNING:\e[0m Unexpected destination image ID format ("%s"), proceeding with transfer.\n' "$dst_id" >&2
+    invalid_ids=true
+  fi
+
+  if [[ "$invalid_ids" == false ]]; then
+    if [[ -n "$src_id" && -n "$dst_id" && "$src_id" == "$dst_id" ]]; then
+      echo ">>> Source and destination image IDs are identical; skipping image transfer."
+      return 0
+    fi
+  fi
+  # --- END new ID-compare block ---
 
   remote_src_file="${SRC_TMP_PATH}/docker-image-${SANITIZED_NAME}-${TIMESTAMP}.tar"
   local_file="${WORKDIR}/$(basename "$remote_src_file")"
